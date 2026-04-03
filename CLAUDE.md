@@ -46,21 +46,24 @@ When running in Docker (`AC_OS` = `Linux in Docker`), the following tools are av
 | **Python** | Python 3, matplotlib, seaborn, plotly, pandas, numpy, pillow |
 | **Cloud** | gcloud CLI (Google Cloud), with host's gcloud config mounted read-only |
 | **Testing** | Playwright with Chromium pre-installed |
+| **Audio** | PulseAudio client, ALSA utils, SoX (for voice mode) |
 | **Other** | jq, curl, wget, imagemagick, sudo |
 
 Build artifacts are stored in `artifacts/claude-docker/` to avoid permission conflicts with the host.
 
 **Infrastructure services**: When running in Docker, assume that all services defined in `docker-compose.yml` (PostgreSQL, Redis, NATS, nginx, etc.) are already running on the host. Do not attempt to start them yourself - they are managed externally and accessible from the container.
 
-**Host service connectivity**: The Docker container uses `--network host` mode, so `localhost` inside the container directly refers to the host. This means you can connect to host services (Redis, PostgreSQL, NATS, etc.) using `localhost:port` just like on the host.
+**Host service connectivity**: The Docker container uses `--network host` mode, so `localhost` inside the container directly refers to the host. This means you can connect to host services (Redis, PostgreSQL, NATS, etc.) using `localhost:port` just like on the host. On macOS, `--network host` requires Docker Desktop 4.34+ (Sept 2024).
+
+**macOS / Apple Silicon**: The Docker image supports both amd64 and arm64 architectures. `c.cmd` is a polyglot script that works on both Windows and macOS/Linux.
 
 **Running integration tests**: Tests detect Claude's Docker environment via `AC_OS="Linux in Docker"` and use regular localhost-based configuration (not `testsettings.docker.json`). This works because `--network host` makes localhost = host.
 
-**Running the server**: Do not run the ActualChat server from Docker. Use `/server-start` on the host OS instead (`c os` mode). The Docker environment is intended for building, testing, and code exploration only.
+**Running the server**: Use `/server-start` to start the server, `/server-restart` to rebuild and restart, `/server-stop` to stop. Server commands use `Get-BuildAgent` from `scripts/Common.ps1` to auto-detect the environment: on **macOS/Windows**, it connects to the build agent host (which runs builds and the .NET server on the host OS so nginx can proxy via domain names like `https://worktree.local.voxt.ai`); on **Linux**, it controls the server directly in Docker (where `--network host` truly shares ports). Use `--watch` flag for auto-reload during UI development. See the "Autonomous UI Development Loop" section in `AGENTS.md` for the full workflow.
 
 **Propagated environment variables**: The following environment variables are automatically propagated from the host to the Docker container:
 - Variables containing `__` in their names (e.g., `ChatSettings__OpenAIApiKey` for .NET configuration)
-- `GITHUB_TOKEN` - GitHub authentication token
+- `AC_GITHUB_TOKEN` - GitHub authentication token (AC_ prefix to avoid conflicts with gh CLI)
 - `NPM_READ_TOKEN` - NPM registry read token
 - `GOOGLE_CLOUD_PROJECT` - Google Cloud project ID
 - `ActualChat_*` - Any variables prefixed with `ActualChat_`
@@ -73,13 +76,13 @@ Build artifacts are stored in `artifacts/claude-docker/` to avoid permission con
 
 **Isolated mode**: Set `AC_CLAUDE_ISOLATE=true` (or `1`) to run with an isolated `.claude.json` config file. When enabled, the launcher copies `.claude.json` to `artifacts/claude-docker/.claude-{timestamp}.json` and mounts that copy instead of the original. Changes made inside the container are not synced back to the host's `.claude.json`. This is useful for parallel Claude instances or testing without affecting the main config.
 
-## Playwright and Browser Automation
+## Browser Automation and Chrome Debugging
 
-Playwright and Chromium are pre-installed in the Docker image for browser automation tasks.
+The user starts Chrome with remote debugging via `c chrome` command (port 9222). On Windows, this also creates a firewall rule to allow connections from WSL/Docker.
 
-**Using host Chrome**: When the user asks you to "use host Chrome", connect Playwright to Chrome running on the Windows host instead of launching a headless browser. This allows the user to visually observe browser automation.
+**chrome-devtools MCP (preferred)**: If the `chrome-devtools` MCP server is available (configured in `.mcp.json`), prefer using it over Playwright for browser inspection, debugging, and interaction. It provides direct access to Chrome DevTools capabilities — taking screenshots/snapshots, clicking elements, filling forms, evaluating scripts, reading console messages, and more. The MCP server connects to host Chrome automatically via `tools/chrome-devtools-mcp-wrapper`.
 
-The user starts Chrome with remote debugging via `c chrome` command (port 9222). On Windows, this also creates a firewall rule to allow connections from WSL/Docker. Connect to it using:
+**Playwright**: Playwright and Chromium are also pre-installed in the Docker image. Use Playwright when you need to write automated test scripts or when the chrome-devtools MCP is not available. When the user asks you to "use host Chrome", connect Playwright to Chrome on the host:
 
 ```typescript
 import { chromium } from 'playwright';
@@ -93,6 +96,14 @@ await page.goto('https://example.com');
 
 Since Docker uses `--network host`, `localhost:9222` reaches the host's Chrome directly.
 
+**Docker host IP resolution**: If `localhost` doesn't work (e.g., it resolves to `::1` IPv6 while Chrome listens on IPv4 only), resolve the host IP explicitly:
+
+```bash
+getent ahosts host.docker.internal | awk 'NR==1{print $1}'
+```
+
+Then use the resulting IP (e.g., `http://192.168.65.254:9222`) instead of `localhost`.
+
 ## Accessing Sibling Projects
 
 `AC_ProjectRoot` points to the directory that contains all projects. In Docker it is `/proj`, so sibling projects are accessible at `/proj/ActualLab.Fusion`, `/proj/ActualLab.Fusion.Samples`, etc.
@@ -102,6 +113,7 @@ Since Docker uses `--network host`, `localhost:9222` reaches the host's Chrome d
 | Docker | `/proj` | `/proj/ActualLab.Fusion` |
 | WSL | `/mnt/d/Projects` | `/mnt/d/Projects/ActualLab.Fusion` |
 | Windows | `D:\Projects` | `D:\Projects\ActualLab.Fusion` |
+| macOS | `~/Projects` | `~/Projects/ActualLab.Fusion` |
 
 ## Worktree Support
 
@@ -121,6 +133,10 @@ The worktree is created using `git worktree add` from the main project directory
 # Type Catalog
 
 Use `docs/api-index.md` to discover existing abstractions before writing new code. It lists key public types across all non-test projects, organized by project. For the complete list, see `docs/api-index-full.md`.
+
+# Architecture Docs
+
+Consult `docs/architecture/video-system.md` for the video system design — covers video streaming, recording, playback, and server/client components.
 
 # Building
 
