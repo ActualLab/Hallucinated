@@ -81,7 +81,19 @@ export default withMermaid(defineConfig({
       provider: "local",
     },
     nav: [],
-    sidebar: [],
+    sidebar: [
+      {
+        text: 'Coding with LLMs',
+        items: [
+          { text: '×10, Not +10', link: '/coding-with-llms/coding-with-llms-multiplier-not-addition' },
+          { text: 'Docker Sandbox Setup', link: '/coding-with-llms/coding-with-llms-docker-sandbox-setup' },
+          { text: 'Death of Procrastination', link: '/coding-with-llms/coding-with-llms-death-of-procrastination' },
+          { text: 'Bug Hunting with Logs', link: '/coding-with-llms/coding-with-llms-bug-hunting-logs' },
+          { text: 'The Elaborate Hallucination', link: '/coding-with-llms/coding-with-llms-failures-and-limits' },
+          { text: 'Developer Careers & Future', link: '/coding-with-llms/coding-with-llms-developer-careers-future' },
+        ]
+      }
+    ],
     outline: [2, 3],
   },
   vite: {
